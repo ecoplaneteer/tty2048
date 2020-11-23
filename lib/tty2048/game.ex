@@ -2,17 +2,19 @@ defmodule Tty2048.Game do
   defstruct [:grid, score: 0]
 
   use GenServer
-
   alias Tty2048.Grid
 
-  def start_link(from) do
-    GenServer.start_link(__MODULE__, from, [name: __MODULE__])
+  @win_tile 2048
+  @grid_size 6
+  @random_seed if Mix.env() == :test, do: 0, else: :os.timestamp()
+
+  def start_link(_args) do
+    GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
-  def init(from) do
-    :random.seed(:os.timestamp)
-    {:ok, manager} = GenEvent.start_link
-    {:ok, {manager, new(from)}}
+  def init(:ok) do
+    :random.seed(@random_seed)
+    {:ok, new(@grid_size)}
   end
 
   def peek() do
@@ -20,33 +22,44 @@ defmodule Tty2048.Game do
   end
 
   def move(side) do
-    GenServer.cast(__MODULE__, {:move, side})
+    GenServer.call(__MODULE__, {:move, side})
   end
 
-  def handle_call(:peek, _from, {_, %__MODULE__{}} = game) do
+  def restart() do
+    GenServer.call(__MODULE__, :restart)
+  end
+
+  def handle_call(:peek, _from, game) do
     {:reply, game, game}
   end
 
-  def handle_cast({:move, side}, {manager, %__MODULE__{} = game}) do
-    case move(game, side) do
-      {true, game} ->
-        GenEvent.notify(manager, {:moved, game})
-        {:noreply, {manager, game}}
-      {false, game} ->
-        GenEvent.notify(manager, {:game_over, game})
-        {:noreply, {manager, game}}
+  def handle_call({:move, side}, _from, {_status, game}) do
+    {can_move?, game} = move(game, side)
+    highest_value = game.grid |> List.flatten() |> Enum.max()
+
+    cond do
+      highest_value >= @win_tile -> reply({:game_won, game})
+      can_move? == true -> reply({:playing, game})
+      can_move? == false -> reply({:game_over, game})
     end
   end
 
-  defp new(%__MODULE__{} = game), do: game
+  def handle_call(:restart, _from, _game) do
+    new_game = new(@grid_size)
+    {:reply, new_game, new_game}
+  end
 
   defp new(size) when is_integer(size) do
-    %__MODULE__{grid: Grid.new(size)}
+    {:playing, %{grid: Grid.new(size), score: 0}}
   end
 
   defp move(%{grid: grid, score: score}, side) do
     {grid, points} = Grid.move(grid, side)
-    game = %__MODULE__{grid: grid, score: score + points}
+    game = %{grid: grid, score: score + points}
     {Grid.has_move?(grid), game}
+  end
+
+  defp reply(state) do
+    {:reply, state, state}
   end
 end

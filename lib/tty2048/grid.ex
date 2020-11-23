@@ -2,8 +2,8 @@ defmodule Tty2048.Grid do
   @sides [:up, :down, :right, :left]
 
   def new(size) when size > 0 do
-    make_grid(size)
-    |> seed |> seed
+    grid = make_grid(size)
+    seed(2, grid)
   end
 
   def move(grid, side)
@@ -111,7 +111,7 @@ defmodule Tty2048.Grid do
   end
 
   defp seed(grid) do
-    seed(if(:random.uniform < 0.9, do: 2, else: 4), grid)
+    seed(1, grid)
   end
 
   defp seed(num, grid) do
